@@ -48,53 +48,56 @@ class KittiDataModule(pl.LightningDataModule):
         self.use_strong_img_aug = use_strong_img_aug
 
     def setup(self, stage=None):
-        self.train_ds = KittiDataset(
-            split="train",
-            root=self.root,
-            preprocess_root=self.preprocess_root,
-            project_scale=self.project_scale,
-            frustum_size=self.frustum_size,
-            fliplr=0.5,
-            color_jitter=(0.4, 0.4, 0.4),
-            pattern_id=self.pattern_id,
-            multi_view_mode=self.multi_view_mode,
-            use_stereo_depth_gt=self.use_stereo_depth_gt,
-            use_lidar_depth_gt=self.use_lidar_depth_gt,
-            data_stereo_depth_root=self.data_stereo_depth_root,
-            data_lidar_depth_root=self.data_lidar_depth_root,
-            with_occluded=self.with_occluded,
-            use_strong_img_aug=self.use_strong_img_aug,
-        )
+        if stage in (None, "fit"):
+            self.train_ds = KittiDataset(
+                split="train",
+                root=self.root,
+                preprocess_root=self.preprocess_root,
+                project_scale=self.project_scale,
+                frustum_size=self.frustum_size,
+                fliplr=0.5,
+                color_jitter=(0.4, 0.4, 0.4),
+                pattern_id=self.pattern_id,
+                multi_view_mode=self.multi_view_mode,
+                use_stereo_depth_gt=self.use_stereo_depth_gt,
+                use_lidar_depth_gt=self.use_lidar_depth_gt,
+                data_stereo_depth_root=self.data_stereo_depth_root,
+                data_lidar_depth_root=self.data_lidar_depth_root,
+                with_occluded=self.with_occluded,
+                use_strong_img_aug=self.use_strong_img_aug,
+            )
 
-        self.val_ds = KittiDataset(
-            split="val",
-            root=self.root,
-            preprocess_root=self.preprocess_root,
-            project_scale=self.project_scale,
-            frustum_size=self.frustum_size,
-            fliplr=0,
-            color_jitter=None,
-            pattern_id=self.pattern_id,
-            multi_view_mode=self.multi_view_mode,
-            use_stereo_depth_gt=False,
-            with_occluded=False,
-            use_strong_img_aug=False,
-        )
+        if stage in (None, "fit", "validate"):
+            self.val_ds = KittiDataset(
+                split="val",
+                root=self.root,
+                preprocess_root=self.preprocess_root,
+                project_scale=self.project_scale,
+                frustum_size=self.frustum_size,
+                fliplr=0,
+                color_jitter=None,
+                pattern_id=self.pattern_id,
+                multi_view_mode=self.multi_view_mode,
+                use_stereo_depth_gt=False,
+                with_occluded=False,
+                use_strong_img_aug=False,
+            )
 
-        self.test_ds = KittiDataset(
-            split="test",
-            root=self.root,
-            preprocess_root=self.preprocess_root,
-            project_scale=self.project_scale,
-            frustum_size=self.frustum_size,
-            fliplr=0,
-            color_jitter=None,
-            pattern_id=self.pattern_id,
-            multi_view_mode=self.multi_view_mode,
-            use_stereo_depth_gt=False,
-            with_occluded=False,
-            use_strong_img_aug=False,
-        )
+        if stage in (None, "test", "predict"):
+            self.test_ds = KittiDataset(
+                split="test",
+                root=self.root,
+                preprocess_root=self.preprocess_root,
+                project_scale=self.project_scale,
+                frustum_size=self.frustum_size,
+                fliplr=0,
+                color_jitter=None,
+                pattern_id=self.pattern_id,
+                multi_view_mode=self.multi_view_mode,
+                use_stereo_depth_gt=False,
+                with_occluded=False,
+                use_strong_img_aug=False,
+            )
 
     def train_dataloader(self):
         from functools import partial

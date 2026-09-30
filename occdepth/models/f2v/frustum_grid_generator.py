@@ -93,7 +93,7 @@ class FrustumGridGenerator(nn.Module):
         voxel_grid = voxel_grid.repeat_interleave(repeats=B, dim=0)
 
         # Transform to camera frame
-        camera_grid = kornia.transform_points(trans_01=trans, points_1=voxel_grid)
+        camera_grid = kornia.geometry.linalg.transform_points(trans_01=trans, points_1=voxel_grid)
 
         # Project to image
         I_C = I_C.reshape(B, 1, 1, 3, 4)
@@ -111,7 +111,7 @@ class FrustumGridGenerator(nn.Module):
         # reverse agu
         # ida_mats = torch.stack(ida_mats)
         ida_mats = ida_mats.reshape(B, 1, 1, 4, 4)
-        frustum_grid = kornia.transform_points(trans_01=ida_mats, points_1=frustum_grid)
+        frustum_grid = kornia.geometry.linalg.transform_points(trans_01=ida_mats, points_1=frustum_grid)
         return frustum_grid
 
     def forward(self, lidar_to_cam, cam_to_img, ida_mats, image_shape):

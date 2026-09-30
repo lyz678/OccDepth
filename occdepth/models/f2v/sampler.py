@@ -61,5 +61,6 @@ class Sampler(nn.Module):
             grid=grid,
             mode=self.mode,
             padding_mode=self.padding_mode,
+            align_corners=False,
         )
         return output

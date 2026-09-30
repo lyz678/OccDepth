@@ -29,8 +29,8 @@ class SFA(nn.Module):
             for pattern_idx in range(1, img_indices.shape[2]):
                 sub_src_feature += torch.gather(src, 1, img_indices[:, :, pattern_idx])
             sub_weights = torch.sum(weights, 1)
-            sub_src_feature = sub_src_feature / sub_weights
-            sub_weights = sub_weights / sub_weights
+            sub_src_feature = sub_src_feature / sub_weights.clamp_min(1)
+            sub_weights = (sub_weights > 0).to(sub_src_feature.dtype)
             sub_src_feature = torch.where(
                 torch.isnan(sub_src_feature),
                 torch.full_like(sub_src_feature, 0),

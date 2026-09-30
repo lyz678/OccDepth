@@ -1,3 +1,4 @@
+from copy import deepcopy
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -24,7 +25,6 @@ from occdepth.loss.depth_loss import DepthClsLoss
 # PCA
 from sklearn.decomposition import PCA
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class OccDepth(pl.LightningModule):
@@ -123,6 +123,7 @@ class OccDepth(pl.LightningModule):
             use_decoder=True,
             backbone_2d_name=config.backbone_2d_name,
             return_up_feats=config.return_up_feats,
+            pretrained_backbone=config.get("pretrained_backbone", True),
         )
 
         # log hyperparameters
@@ -137,7 +138,7 @@ class OccDepth(pl.LightningModule):
 
         # step decay loss
         print("INFO: Use step decay loss: {}".format(self.sem_step_decay_loss))
-        batch_size = config.batch_size_per_gpu * config.n_gpus
+        batch_size = config.batch_size_per_gpu * max(1, config.n_gpus)
         if self.dataset == "kitti":
             self.total_batch = (3834 // batch_size) * 30
         elif self.dataset == "NYU":
@@ -180,7 +181,7 @@ class OccDepth(pl.LightningModule):
                 )
 
             self.projects = nn.ModuleDict(self.projects)
-            self.flosp_depth_conf = flosp_depth_conf_map[self.dataset]
+            self.flosp_depth_conf = deepcopy(flosp_depth_conf_map[self.dataset])
             self.flosp_depth_conf.update(
                 {
                     "scene_size": config.full_scene_size,
@@ -221,7 +222,7 @@ class OccDepth(pl.LightningModule):
         # ####use depth to generate right image######
         if(n_views==1 and depth_key in batch):
             if('virtual_bf' in batch):
-                bf = batch["virtual_bf"][0].to(device)
+                bf = batch["virtual_bf"][0].to(self.device)
             x_rgb_virtual={}
             for scale_2d in self.project_res:
                 x_rgb_virtual["1_" + str(scale_2d)] = self.generate_virtual_img(batch,x_rgb[0]["1_" + str(scale_2d)],scale_2d,bf)
@@ -232,7 +233,7 @@ class OccDepth(pl.LightningModule):
 
     def generate_virtual_img(self,batch,x_single_rgb,scale_2d,bf):
         depth_key = "gt_depth"
-        depth_mat = batch[depth_key].to(device)
+        depth_mat = batch[depth_key].to(self.device)
 
         x_scale = torch.clone(x_single_rgb)
         n_bs_scale, c_scale, h_scale, w_scale = x_scale.shape
@@ -247,14 +248,14 @@ class OccDepth(pl.LightningModule):
         grid_dx = torch.where(torch.isinf(grid_dx), torch.full_like(grid_dx, 0), grid_dx)
         h_d = torch.arange(-1,1,2/h_scale)
         w_d = torch.arange(-1,1,2/w_scale)
-        meshx, meshy = torch.meshgrid((h_d, w_d))
+        meshx, meshy = torch.meshgrid((h_d, w_d), indexing="ij")
         grid = []
         for i in range(n_bs_scale):
             grid.append(torch.stack((meshy, meshx), axis=2))
-        grid = torch.stack(grid).to(device).type_as(grid_dx) # add batch dim
+        grid = torch.stack(grid).to(self.device).type_as(grid_dx) # add batch dim
         grid_dx = grid_dx * 2/w_scale ## scale dx
  
-        grid[:,:,:,0] = grid[:,:,:,0] + grid_dx[0,...]
+        grid[:,:,:,0] = grid[:,:,:,0] + grid_dx[:, 0, ...]
         x_scale_new=nn.functional.grid_sample(x_scale, grid, mode='bilinear', padding_mode='border', align_corners=False)
 
         return x_scale_new
@@ -270,15 +271,15 @@ class OccDepth(pl.LightningModule):
                     scale_2d = int(scale_2d)
                     projected_pix = batch[
                         "projected_pix_{}".format(self.project_scale)
-                    ][i].to(device)
+                    ][i].to(self.device)
                     fov_mask = batch["fov_mask_{}".format(self.project_scale)][i].to(
-                        device
+                        self.device
                     )
                     n_views=len(x_rgb)
                     x_rgb_reshape = []
                     for j in range(n_views):
                         x_rgb_reshape.append(x_rgb[j]["1_" + str(scale_2d)])
-                    x_rgb_reshape = torch.stack(x_rgb_reshape,1 ).to(device)
+                    x_rgb_reshape = torch.stack(x_rgb_reshape,1 ).to(self.device)
 
                     # Sum all the 3D features
                     if x3d is None:
@@ -305,7 +306,7 @@ class OccDepth(pl.LightningModule):
                     n_views = 1
                 for j in range(n_views):
                     x_rgb_reshape.append(x_rgb[j][rgb_feat_layer])
-                img_feat = torch.stack(x_rgb_reshape,1 ).to(device)
+                img_feat = torch.stack(x_rgb_reshape,1 ).to(self.device)
 
                 if self.infer_mode:
                     grids = batch["grids"]
@@ -342,7 +343,7 @@ class OccDepth(pl.LightningModule):
         return x3ds, depth_pred
 
     def forward(self, batch):
-        img = batch["img"].to(device)
+        img = batch["img"].to(self.device)
         bs, n_views, c, h, w = img.shape
         out = {}
         """
@@ -395,7 +396,7 @@ class OccDepth(pl.LightningModule):
                 self.log(
                     step_type + "/loss_relation_ce_super",
                     loss_rel_ce.detach(),
-                    on_epoch=True,
+                    on_epoch=True, batch_size=bs,
                     sync_dist=True,
                 )
 
@@ -406,7 +407,7 @@ class OccDepth(pl.LightningModule):
             self.log(
                 step_type + "/loss_ssc",
                 loss_ssc.detach(),
-                on_epoch=True,
+                on_epoch=True, batch_size=bs,
                 sync_dist=True,
             )
             if self.cascade_cls:
@@ -419,7 +420,7 @@ class OccDepth(pl.LightningModule):
                 self.log(
                     step_type + "/loss_occ",
                     loss_occ.detach(),
-                    on_epoch=True,
+                    on_epoch=True, batch_size=bs,
                     sync_dist=True,
                 )
             if self.occluded_cls and "occluded" in batch:
@@ -434,7 +435,7 @@ class OccDepth(pl.LightningModule):
                 self.log(
                     step_type + "/loss_occluded",
                     loss_occluded.detach(),
-                    on_epoch=True,
+                    on_epoch=True, batch_size=bs,
                     sync_dist=True,
                 )
 
@@ -459,7 +460,7 @@ class OccDepth(pl.LightningModule):
             self.log(
                 step_type + "/loss_depth",
                 loss_depth.detach(),
-                on_epoch=True,
+                on_epoch=True, batch_size=bs,
                 sync_dist=True,
             )
 
@@ -473,7 +474,7 @@ class OccDepth(pl.LightningModule):
             self.log(
                 step_type + "/loss_sem_scal",
                 loss_sem_scal.detach(),
-                on_epoch=True,
+                on_epoch=True, batch_size=bs,
                 sync_dist=True,
             )
 
@@ -483,7 +484,7 @@ class OccDepth(pl.LightningModule):
             self.log(
                 step_type + "/loss_geo_scal",
                 loss_geo_scal.detach(),
-                on_epoch=True,
+                on_epoch=True, batch_size=bs,
                 sync_dist=True,
             )
 
@@ -519,7 +520,7 @@ class OccDepth(pl.LightningModule):
             self.log(
                 step_type + "/loss_frustums",
                 frustum_loss.detach(),
-                on_epoch=True,
+                on_epoch=True, batch_size=bs,
                 sync_dist=True,
             )
 
@@ -528,7 +529,7 @@ class OccDepth(pl.LightningModule):
         y_pred = np.argmax(y_pred, axis=1)
         metric.add_batch(y_pred, y_true)
 
-        self.log(step_type + "/loss", loss.detach(), on_epoch=True, sync_dist=True)
+        self.log(step_type + "/loss", loss.detach(), on_epoch=True, batch_size=bs, sync_dist=True)
 
         return loss
 
@@ -539,7 +540,7 @@ class OccDepth(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         self.step(batch, "val", self.val_metrics)
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         metric_list = [("train", self.train_metrics), ("val", self.val_metrics)]
 
         for prefix, metric in metric_list:
@@ -559,7 +560,7 @@ class OccDepth(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         self.step(batch, "test", self.test_metrics)
 
-    def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self):
         classes = self.class_names
         metric_list = [("test", self.test_metrics)]
         for prefix, metric in metric_list:
@@ -669,7 +670,7 @@ if __name__ == "__main__":
         )
         # 传入需要两个数据 一个是 正常传入网络的结构，一个是网络
         # 如果网络加载到cuda中，传入的数据也需要.cuda()
-        model.to(device)
+        model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         res = model(fake_data)
         if do_model_thop:
             from thop import profile

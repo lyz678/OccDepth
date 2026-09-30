@@ -1,7 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch.utils.checkpoint as cp
-from mmcv.cnn import ConvModule
-from mmcv.runner import BaseModule
+from occdepth.models.layers import ConvModule, BaseModule
 
 from .se_layer import SELayer
 
@@ -120,7 +119,7 @@ class InvertedResidual(BaseModule):
                 return out
 
         if self.with_cp and x.requires_grad:
-            out = cp.checkpoint(_inner_forward, x)
+            out = cp.checkpoint(_inner_forward, x, use_reentrant=False)
         else:
             out = _inner_forward(x)
 

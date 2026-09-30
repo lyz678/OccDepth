@@ -1,3 +1,4 @@
+from occdepth.runtime import config_main
 import numpy as np
 from tqdm import tqdm
 import numpy.matlib
@@ -143,7 +144,7 @@ def _downsample_label(label, voxel_size=(240, 144, 240), downscale=4):
     return label_downscale
 
 config_path= os.getenv('DATA_CONFIG')
-@hydra.main(config_name=config_path)
+@config_main
 def main(config: DictConfig):
     scene_size = (240, 144, 240)
     for split in ["train", "test"]:

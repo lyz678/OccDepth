@@ -42,7 +42,7 @@ def get_grid_coords(dims, resolution):
         range(dims[0]), range(dims[1]), range(dims[2]), indexing="ij"
     )
     coords_grid = np.array([xx.flatten(), yy.flatten(), zz.flatten()]).T
-    coords_grid = coords_grid.astype(np.float)
+    coords_grid = coords_grid.astype(np.float64)
 
     coords_grid = (coords_grid * resolution) + resolution / 2
 

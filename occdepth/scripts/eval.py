@@ -1,3 +1,5 @@
+from occdepth.runtime import trainer_device, load_model
+from occdepth.runtime import config_main
 from pytorch_lightning import Trainer
 from occdepth.models.OccDepth import OccDepth
 from occdepth.data.NYU.nyu_dm import NYUDataModule
@@ -12,7 +14,7 @@ from hydra.utils import get_original_cwd
 
 config_path= os.getenv('DATA_CONFIG')
 
-@hydra.main(config_name=config_path)
+@config_main
 def main(config: DictConfig):
     torch.set_grad_enabled(False)
     load_strict = True
@@ -22,9 +24,10 @@ def main(config: DictConfig):
         data_module = KittiDataModule(
             root=config.data_root,
             preprocess_root=config.data_preprocess_root,
+            project_scale=config.project_scale,
             frustum_size=config.frustum_size,
             batch_size=int(config.batch_size_per_gpu),
-            num_workers=int(config.num_workers_per_gpu * config.n_gpus),
+            num_workers=int(config.num_workers_per_gpu),
             pattern_id=config.pattern_id,
             multi_view_mode=config.multi_view_mode,
             use_stereo_depth_gt=config.use_stereo_depth_gt,
@@ -42,7 +45,7 @@ def main(config: DictConfig):
             n_relations=config.n_relations,
             frustum_size=config.frustum_size,
             batch_size=int(config.batch_size_per_gpu),
-            num_workers=int(config.num_workers_per_gpu * config.n_gpus),
+            num_workers=int(config.num_workers_per_gpu),
             pattern_id=config.pattern_id,
             use_depth_gt=config.use_depth_gt,
         )
@@ -52,37 +55,18 @@ def main(config: DictConfig):
         )
 
     trainer = Trainer(
-        sync_batchnorm=True, deterministic=True, gpus=config.n_gpus, accelerator="ddp"
+        **trainer_device(config), deterministic=config.deterministic,
+        logger=False, enable_checkpointing=False,
+        limit_test_batches=config.get("limit_test_batches", 1.0),
     )
-
-    model_path = os.path.join(get_original_cwd(), "trained_models", "occdepth.ckpt")
-
-    print(
-        "##### Max CUDA memory before load model: {} G".format(
-            torch.cuda.max_memory_allocated() / (1024**3)
-        )
-    )
-    model = OccDepth.load_from_checkpoint(
-        model_path,
-        full_scene_size=full_scene_size,
-        config=config,
-        strict=load_strict,
-    )
-    model.cuda()
+    model = load_model(OccDepth, config, full_scene_size=tuple(config.full_scene_size))
     model.eval()
-    print(
-        "##### Max CUDA memory after load model: {} G".format(
-            torch.cuda.max_memory_allocated() / (1024**3)
-        )
-    )
-    data_module.setup()
-    val_dataloader = data_module.val_dataloader()
-    trainer.test(model, test_dataloaders=val_dataloader)
-    print(
-        "##### Max CUDA memory during all evaluation process: {} G".format(
-            torch.cuda.max_memory_allocated() / (1024**3)
-        )
-    )
+    data_module.setup("validate")
+    if config.n_gpus:
+        torch.cuda.reset_peak_memory_stats()
+    trainer.test(model, dataloaders=data_module.val_dataloader())
+    if config.n_gpus:
+        print(f"Peak allocated CUDA memory: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GiB")
 
 
 if __name__ == "__main__":

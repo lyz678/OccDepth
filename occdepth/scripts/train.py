@@ -1,3 +1,5 @@
+from occdepth.runtime import trainer_device
+from occdepth.runtime import config_main
 from occdepth.data.semantic_kitti.kitti_dm import KittiDataModule
 from occdepth.data.semantic_kitti.params import (
     semantic_kitti_class_frequencies,
@@ -32,7 +34,7 @@ from pytorch_lightning import seed_everything
 hydra.output_subdir = None
 config_path= os.getenv('DATA_CONFIG')
 
-@hydra.main(config_name=config_path)
+@config_main
 def main(config: DictConfig):
     print(f"load config: dataset={config.dataset}")
     exp_name = config.exp_prefix
@@ -107,7 +109,7 @@ def main(config: DictConfig):
             n_relations=config.n_relations,
             frustum_size=config.frustum_size,
             batch_size=int(config.batch_size_per_gpu),
-            num_workers=int(config.num_workers_per_gpu * config.n_gpus),
+            num_workers=int(config.num_workers_per_gpu),
             pattern_id=config.pattern_id,
             use_depth_gt=config.use_depth_gt,
             use_strong_img_aug=config.use_strong_img_aug,
@@ -135,6 +137,12 @@ def main(config: DictConfig):
 
     print("exp=", exp_name)
     print("config=", config)
+
+    model_path = os.path.join(logdir, exp_name, "checkpoints/last.ckpt")
+    resume_path = config.get("ckpt") or (model_path if os.path.isfile(model_path) else None)
+    if resume_path:
+        from omegaconf import OmegaConf
+        config = OmegaConf.merge(config, {"pretrained_backbone": False})
 
     # Initialize OccDepth model
     model = OccDepth(
@@ -168,44 +176,22 @@ def main(config: DictConfig):
         ]
     else:
         logger = False
-        checkpoint_callbacks = False
+        checkpoint_callbacks = []
 
-    model_path = os.path.join(logdir, exp_name, "checkpoints/last.ckpt")
-    if os.path.isfile(model_path):
-        # Continue training from last.ckpt
-        trainer = Trainer(
-            callbacks=checkpoint_callbacks,
-            resume_from_checkpoint=model_path,
-            sync_batchnorm=True,
-            max_epochs=max_epochs,
-            gpus=config.n_gpus,
-            logger=logger,
-            check_val_every_n_epoch=1,
-            log_every_n_steps=10,
-            flush_logs_every_n_steps=100,
-            accelerator="ddp",
-            amp_backend="native",
-            gradient_clip_val=config.gradient_clip_val,
-            deterministic=config.deterministic,  # will increase gpu memory
-        )
-    else:
-        # Train from scratch
-        trainer = Trainer(
-            callbacks=checkpoint_callbacks,
-            sync_batchnorm=True,
-            max_epochs=max_epochs,
-            gpus=config.n_gpus,
-            logger=logger,
-            check_val_every_n_epoch=1,
-            log_every_n_steps=10,
-            flush_logs_every_n_steps=100,
-            accelerator="ddp",
-            amp_backend="native",
-            gradient_clip_val=config.gradient_clip_val,
-            deterministic=config.deterministic,  # will increase gpu memory
-        )
-
-    trainer.fit(model, data_module)
+    trainer = Trainer(
+        **trainer_device(config),
+        callbacks=checkpoint_callbacks,
+        enable_checkpointing=bool(config.enable_log),
+        max_epochs=max_epochs,
+        logger=logger,
+        check_val_every_n_epoch=1,
+        log_every_n_steps=10,
+        gradient_clip_val=config.gradient_clip_val,
+        deterministic=config.deterministic,
+        limit_train_batches=config.get("limit_train_batches", 1.0),
+        limit_val_batches=config.get("limit_val_batches", 1.0),
+    )
+    trainer.fit(model, datamodule=data_module, ckpt_path=resume_path)
     print("Training done.")
 
 

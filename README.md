@@ -78,33 +78,141 @@ means missing results
 # Usage
 
 ## Environment
-1. Create conda environment:
-``` bash
-conda create -y -n occdepth python=3.7
-conda activate occdepth
-conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.7 -c pytorch -c nvidia
+
+This checkout runs without MMDetection/MMCV. The validated local environment is
+Python 3.10, PyTorch 2.7.1+CUDA 12.8, torchvision 0.22.1, NumPy 2.1.2 and
+PyTorch Lightning 2.5.6.
+
+```bash
+conda activate pytorch
+python -m pip install -r requirements.txt -c constraints-local.txt
 ```
-2. Install dependencies:
-``` bash
-pip install -r requirements.txt
-conda install -c bioconda tbb=2020.2
+
+Keep the existing CUDA-enabled PyTorch installation. `constraints-local.txt`
+protects the versions installed on this machine; it is not a generic fresh
+PyTorch installation recipe. Visualization packages are optional and listed
+separately in `requirements-visualization.txt`.
+
+**Dataset files and checkpoints are not included in this repository.** Follow
+the download steps below before running evaluation. See also
+[local setup, verified results and runnable commands](docs/local_setup.md).
+The author depth archive does not contain sequence 08; validation does not
+require depth supervision. The quick start prepares only validation sequence 08,
+not the training/test splits.
+
+```bash
+export OCCDEPTH_ROOT="$PWD"
+export DATA_CONFIG="$PWD/occdepth/config/semantic_kitti/kitti08_local.yaml"
+python -m occdepth.scripts.eval limit_test_batches=1
 ```
 
 ## Preparing
 
 ### SemanticKITTI
-- Download kitti odometry and semantic dataset
-    - [SemanticKITTI voxel data (700 MB).](http://www.semantic-kitti.org/assets/data_odometry_voxels.zip)
-    - [KITTI Odometry Benchmark RGB images (color, 65 GB) and KITTI Odometry Benchmark calibration data  (calibration files, 1 MB)](https://www.cvlibs.net/datasets/kitti/eval_odometry.php)
 
-- Download preprocessed depth
-   - [KITTI_Odometry_Stereo_Depth](https://drive.google.com/file/d/1eJPJ1niczagkJfEv21_RdvYBDUbpaQ0w/view?usp=sharing)
+#### Quick start: download validation sequence 08
 
-- Preprocessed kitti semantic data
-    ``` bash
-    cd OccDepth/
-    python occdepth/data/semantic_kitti/preprocess.py data_root="/path/to/semantic_kitti" data_preprocess_root="/path/to/kitti/preprocess/folder"
-    ```
+Run these commands from the repository root after installing the environment
+dependencies. The downloader reads the official ZIP directory and fetches only
+sequence 08 using HTTP Range requests; it does **not** download the entire
+approximately 69 GB color-image archive.
+
+```bash
+git clone https://github.com/lyz678/OccDepth.git
+cd OccDepth
+conda activate pytorch
+python -m pip install -r requirements.txt -c constraints-local.txt
+python -m pip install 'gdown>=6,<7'
+
+# Left/right images, full calibration and semantic-completion voxel labels.
+python tools/download_kitti08.py color
+python tools/download_kitti08.py calib
+python tools/download_kitti08.py voxels
+
+# Download the author's checkpoint, preserving its original filename.
+mkdir -p trained_models
+python -m gdown 'https://drive.google.com/uc?id=1MGJ_HZcuW5UpULpOeJV0M5ZrT-98j7OE' \
+  -O trained_models/kitti_multicam_flospdepth_crp_stereodepth_cascadecls_2080ti_mIoU12.8.ckpt \
+  --continue
+
+# Generate full-resolution and 1/8-resolution semantic labels for 08 only.
+export OCCDEPTH_ROOT="$PWD"
+export DATA_CONFIG="$PWD/occdepth/config/semantic_kitti/kitti08_local.yaml"
+python -m occdepth.data.semantic_kitti.preprocess
+
+# Check frame pairing, calibration, label shapes/classes, ZIP CRCs and model hash.
+python tools/verify_kitti08.py --crc
+
+# One validation batch; use limit_test_batches=1.0 for all 815 labeled frames.
+python -m occdepth.scripts.eval limit_test_batches=1
+```
+
+Expected files:
+
+```text
+OccDepth/
+├── data/
+│   ├── semantic_kitti/dataset/sequences/08/
+│   │   ├── image_2/           # 4,071 left images
+│   │   ├── image_3/           # 4,071 right images
+│   │   ├── calib.txt          # Must include P2, P3 and Tr
+│   │   ├── times.txt
+│   │   └── voxels/            # 815 frames: .bin/.label/.invalid/.occluded
+│   ├── kitti_semantic_preprocess/labels/08/
+│   │   ├── 000000_1_1.npy
+│   │   └── 000000_1_8.npy     # Two scales for every labeled frame
+│   └── downloads/             # Source URLs, per-file CRCs and verification reports
+└── trained_models/
+    └── kitti_multicam_flospdepth_crp_stereodepth_cascadecls_2080ti_mIoU12.8.ckpt
+```
+
+The prepared 08 data, labels and checkpoint occupy approximately **17 GB**.
+The downloader additionally reserves **20 GiB** of free disk space. Rerun the
+same download command after an interruption: completed files are checked by
+size and CRC before being skipped; incomplete members are retried via `.part`
+files. `--root /path/to/data` selects another data directory; in that case,
+override `data_root` and `data_preprocess_root` for preprocessing/evaluation.
+The verification tool's `--root` instead selects the project root containing
+both `data/` and `trained_models/`.
+
+**No 08 depth download is required.** The author's stereo-depth archive contains
+only training sequences 00–07 and 09–10. The KITTI validation/test loader disables
+depth supervision, so this checkpoint can evaluate sequence 08 without it.
+Do not substitute training-sequence depth files for missing validation depth.
+
+#### Full training/test data and official sources
+
+The quick-start downloader is intentionally limited to sequence 08. For full
+training or test-set prediction, download the corresponding archives manually:
+
+| Resource | Official/author source | Purpose |
+|---|---|---|
+| Color stereo images | [KITTI color archive](https://s3.eu-central-1.amazonaws.com/avg-kitti/data_odometry_color.zip) | Left/right images; full archive is about 69 GB |
+| Full calibration | [KITTI calibration archive](https://s3.eu-central-1.amazonaws.com/avg-kitti/data_odometry_calib.zip) | Camera projection and LiDAR-to-camera transform |
+| Voxel data | [SemanticKITTI voxel archive](https://www.semantic-kitti.org/assets/data_odometry_voxels.zip) | Scene-completion input, labels and masks |
+| Training stereo depth | [Author's depth archive](https://drive.google.com/file/d/1eJPJ1niczagkJfEv21_RdvYBDUbpaQ0w/view) | Depth supervision for 00–07 and 09–10 |
+
+Use 00–07 and 09–10 for training, 08 for validation, and 11–21 for test
+prediction (test ground-truth semantics are not public). Merge the image and
+voxel archives under `data/semantic_kitti/dataset/sequences/`. Extract the
+**full calibration archive last**, since image archives may contain a reduced
+`calib.txt` without `Tr`. Extract the training depth archive so that files follow
+`data/KITTI_Odometry_Stereo_Depth/dataset/sequences/<sequence>/depth/<frame>.png`.
+Budget disk space separately for full archives, extracted data and generated
+labels; the 17 GB estimate above applies only to sequence 08.
+
+To preprocess all training/validation sequences, select the original training
+configuration rather than the 08-only preset:
+
+```bash
+export DATA_CONFIG="$PWD/occdepth/config/semantic_kitti/multicam_flospdepth_crp_stereodepth_cascadecls_2080ti.yaml"
+python -m occdepth.data.semantic_kitti.preprocess \
+  data_root="$PWD/data/semantic_kitti" \
+  data_preprocess_root="$PWD/data/kitti_semantic_preprocess"
+```
+
+Configure `data_stereo_depth_root` before training. See
+[training and checkpoint-resume commands](docs/local_setup.md#训练).
 
 
 ### NYUv2
@@ -138,8 +246,8 @@ conda install -c bioconda tbb=2020.2
 cd OccDepth/
 source env_{dataset}.sh
 ## move the trained model to OccDepth/trained_models/occdepth.ckpt
-## 4 gpus and batch size on each gpu is 1
-python occdepth/scripts/generate_output.py n_gpus=4 batch_size_per_gpu=1
+## Single GPU prediction export, batch size 1
+python -m occdepth.scripts.generate_output n_gpus=1 batch_size_per_gpu=1
 ```
 
 ## Evaluation
@@ -148,7 +256,7 @@ cd OccDepth/
 source env_{dataset}.sh
 ## move the trained model to OccDepth/trained_models/occdepth.ckpt
 ## 1 gpu and batch size on each gpu is 1
-python occdepth/scripts/eval.py n_gpus=1 batch_size_per_gpu=1
+python -m occdepth.scripts.eval n_gpus=1 batch_size_per_gpu=1
 ```
 ## Training
 ``` bash
@@ -187,4 +295,3 @@ Year = {2023},
 ```
 # Contact
 If you have any questions, feel free to open an issue or contact us at miaoruihang@megvii.com, huchen@megvii.com.
-

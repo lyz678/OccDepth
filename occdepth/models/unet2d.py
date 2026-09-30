@@ -2,6 +2,7 @@
 Code adapted from https://github.com/shariqfarooq123/AdaBins/blob/main/models/unet_adaptive_bins.py
 """
 import torch
+import timm
 import torch.nn as nn
 import torch.nn.functional as F
 import os
@@ -10,7 +11,7 @@ MODEL_NAME = "tf_efficientnet_b3_ns"
 MODEL_CHANNELS = {
     "tf_efficientnet_b3_ns": [3, 24, 32, 48, 136],
     "tf_efficientnet_b4_ns": [3, 24, 32, 56, 160],
-    "tf_efficientnet_b5_ns": [3, 32, 40, 64, 176],
+    "tf_efficientnet_b5_ns": [3, 24, 40, 64, 176],
     "tf_efficientnet_b7_ns": [3, 32, 48, 80, 224],
 }
 NUM_FEATURES = {
@@ -186,13 +187,19 @@ class Encoder(nn.Module):
         self.original_model = backend
 
     def forward(self, x):
-        features = [x]
-        for k, v in self.original_model._modules.items():
-            if k == "blocks":
-                for ki, vi in v._modules.items():
-                    features.append(vi(features[-1]))
-            else:
-                features.append(v(features[-1]))
+        # timm fuses the old separate activation into BatchNormAct2d.
+        # Retain the legacy feature indices without applying activation twice.
+        model = self.original_model
+        stem = model.conv_stem(x)
+        activated = model.bn1(stem)
+        features = [x, stem, activated, activated]
+        for block in model.blocks:
+            features.append(block(features[-1]))
+        head = model.conv_head(features[-1])
+        activated = model.bn2(head)
+        features.extend([head, activated, activated])
+        features.append(model.global_pool(features[-1]))
+        features.append(model.classifier(features[-1]))
         return features
 
 
@@ -235,9 +242,9 @@ class UNet2D(nn.Module):
         num_features = NUM_FEATURES[basemodel_name]
 
         print("Loading base model {}...".format(basemodel_name), end="")
-        basemodel = torch.hub.load(
-            "rwightman/gen-efficientnet-pytorch", basemodel_name, pretrained=True
-        )
+        pretrained = kwargs.pop("pretrained_backbone", True)
+        name = basemodel_name.replace("_ns", ".ns_jft_in1k")
+        basemodel = timm.create_model(name, pretrained=pretrained)
         print("Done.")
 
         # Remove last layer

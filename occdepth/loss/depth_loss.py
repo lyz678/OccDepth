@@ -1,6 +1,6 @@
 import torch
 
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 import torch.nn.functional as F
 
 
@@ -77,7 +77,7 @@ class DepthClsLoss:
         )
         fg_mask = torch.max(depth_labels, dim=1).values > 0.0
 
-        with autocast(enabled=False):
+        with autocast(device_type=depth_preds.device.type, enabled=False):
             depth_loss = F.binary_cross_entropy(
                 depth_preds[fg_mask],
                 depth_labels[fg_mask],

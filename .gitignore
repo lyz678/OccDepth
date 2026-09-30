@@ -228,3 +228,38 @@ logdir
 *.pkl
 tmp
 *.onnx
+
+# Local datasets (root-only: keep occdepth/data source code versioned)
+/data/
+/datasets/
+
+# Pretrained checkpoints, generated predictions and training output
+/trained_models/
+/checkpoints/
+/output/
+/logdir/
+/outputs/
+/multirun/
+/lightning_logs/
+/wandb/
+*.pt
+*.engine
+*.plan
+
+# Download archives and interrupted transfers
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tar.xz
+*.7z
+*.part
+*.aria2
+
+# Local agent settings and developer caches (not project source)
+/.agents/
+/.codex/
+.ruff_cache/
+.env.*
+!.env.example

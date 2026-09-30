@@ -1,8 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-import mmcv
 import torch.nn as nn
-from mmcv.cnn import ConvModule
-from mmcv.runner import BaseModule
+from occdepth.models.layers import ConvModule, BaseModule
 
 
 class SELayer(BaseModule):
@@ -36,7 +34,7 @@ class SELayer(BaseModule):
         if isinstance(act_cfg, dict):
             act_cfg = (act_cfg, act_cfg)
         assert len(act_cfg) == 2
-        assert mmcv.is_tuple_of(act_cfg, dict)
+        assert isinstance(act_cfg, tuple) and all(isinstance(item, dict) for item in act_cfg)
         self.global_avgpool = nn.AdaptiveAvgPool2d(1)
         self.conv1 = ConvModule(
             in_channels=channels,

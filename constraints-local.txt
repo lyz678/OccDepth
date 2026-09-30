@@ -1,0 +1,5 @@
+# Preserve the installed CUDA stack.
+torch==2.7.1+cu128
+torchvision==0.22.1+cu128
+torchaudio==2.7.1+cu128
+numpy==2.1.2

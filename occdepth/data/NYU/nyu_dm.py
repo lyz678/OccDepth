@@ -33,18 +33,20 @@ class NYUDataModule(pl.LightningDataModule):
         self.use_strong_img_aug = use_strong_img_aug
 
     def setup(self, stage=None):
-        self.train_ds = NYUDataset(
-            split="train",
-            preprocess_root=self.preprocess_root,
-            n_relations=self.n_relations,
-            root=self.root,
-            fliplr=0.5,
-            frustum_size=self.frustum_size,
-            color_jitter=(0.4, 0.4, 0.4),
-            pattern_id=self.pattern_id,
-            use_depth_gt=self.use_depth_gt,
-            use_strong_img_aug=self.use_strong_img_aug,
-        )
+        if stage in (None, "fit"):
+            self.train_ds = NYUDataset(
+                split="train",
+                preprocess_root=self.preprocess_root,
+                n_relations=self.n_relations,
+                root=self.root,
+                fliplr=0.5,
+                frustum_size=self.frustum_size,
+                color_jitter=(0.4, 0.4, 0.4),
+                pattern_id=self.pattern_id,
+                use_depth_gt=self.use_depth_gt,
+                use_strong_img_aug=self.use_strong_img_aug,
+            )
+
         self.test_ds = NYUDataset(
             split="test",
             preprocess_root=self.preprocess_root,

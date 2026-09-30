@@ -2,8 +2,7 @@
 import warnings
 
 import torch.nn as nn
-from mmcv.cnn import ConvModule
-from mmcv.runner import BaseModule
+from occdepth.models.layers import ConvModule, BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
 # from ..builder import BACKBONES
@@ -218,6 +217,7 @@ class MobileNetV2(BaseModule):
 
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
+            self.conv1.eval()
             for param in self.conv1.parameters():
                 param.requires_grad = False
         for i in range(1, self.frozen_stages + 1):
@@ -247,3 +247,4 @@ class MobileNetV2(BaseModule):
                 # trick: eval have effect on BatchNorm only
                 if isinstance(m, _BatchNorm):
                     m.eval()
+        return self

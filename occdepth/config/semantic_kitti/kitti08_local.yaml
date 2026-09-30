@@ -1,0 +1,18 @@
+# Local validation preset; original publication configuration is unchanged.
+defaults:
+  - multicam_flospdepth_crp_stereodepth_cascadecls_2080ti
+  - _self_
+
+data_root: ${oc.env:OCCDEPTH_ROOT,/home/lyz/OccDepth}/data/semantic_kitti
+data_preprocess_root: ${oc.env:OCCDEPTH_ROOT,/home/lyz/OccDepth}/data/kitti_semantic_preprocess
+data_stereo_depth_root: ${oc.env:OCCDEPTH_ROOT,/home/lyz/OccDepth}/data/KITTI_Odometry_Stereo_Depth
+ckpt: ${oc.env:OCCDEPTH_ROOT,/home/lyz/OccDepth}/trained_models/kitti_multicam_flospdepth_crp_stereodepth_cascadecls_2080ti_mIoU12.8.ckpt
+pretrained_backbone: false
+sequences: ["08"]
+n_gpus: 1
+num_workers_per_gpu: 0
+enable_log: false
+limit_test_batches: 1.0
+hydra:
+  job:
+    chdir: false

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmdet.models.backbones.resnet import BasicBlock
+from occdepth.models.layers import BasicBlock
 
 import math
 from occdepth.models.f2v.frustum_grid_generator import FrustumGridGenerator

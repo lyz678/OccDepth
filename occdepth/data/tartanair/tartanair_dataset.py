@@ -256,7 +256,7 @@ class TartanAirDataset(Dataset):
                 img_i = self.color_jitter(img_i)
 
             # PIL to numpy
-            img_i = np.array(img_i, dtype=np.float32, copy=False) / 255.0
+            img_i = np.asarray(img_i, dtype=np.float32) / 255.0
             img_i = img_i[: self.img_H, : self.img_W, :]  # crop image
 
             # Fliplr the image

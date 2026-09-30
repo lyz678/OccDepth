@@ -150,7 +150,7 @@ class KittiDataset(Dataset):
             glob_path = os.path.join(
                 self.root, "dataset", "sequences", sequence, "voxels", "*.bin"
             )
-            for voxel_path in glob.glob(glob_path):
+            for voxel_path in sorted(glob.glob(glob_path)):
                 self.scans.append(
                     {
                         "sequence": sequence,
@@ -375,7 +375,7 @@ class KittiDataset(Dataset):
                 img_i = self.color_jitter(img_i)
 
             # PIL to numpy
-            img_i = np.array(img_i, dtype=np.float32, copy=False) / 255.0
+            img_i = np.asarray(img_i, dtype=np.float32) / 255.0
             img_i = img_i[: self.img_H, : self.img_W, :]  # crop image
             crop = (0, 0, self.img_W, self.img_H)
 

@@ -1,3 +1,4 @@
+from occdepth.runtime import config_main
 """
 Code partly taken from https://github.com/cv-rits/LMSCNet/blob/main/LMSCNet/data/labels_downscale.py
 """
@@ -40,10 +41,10 @@ def majority_pooling(grid, k_size=2):
     return result
 
 config_path= os.getenv('DATA_CONFIG')
-@hydra.main(config_name=config_path)
+@config_main
 def main(config: DictConfig):
     scene_size = (256, 256, 32)
-    sequences = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+    sequences = [str(seq).zfill(2) for seq in config.get("sequences", [f"{i:02d}" for i in range(11)])]
     remap_lut = SemanticKittiIO.get_remap_lut(
         os.path.join(
             get_original_cwd(),
@@ -64,6 +65,13 @@ def main(config: DictConfig):
         invalid_paths = sorted(
             glob.glob(os.path.join(sequence_path, "voxels", "*.invalid"))
         )
+        if not label_paths:
+            raise FileNotFoundError(f"No voxel labels in {sequence_path}")
+        for label_path, invalid_path in zip(label_paths, invalid_paths):
+            if os.path.splitext(label_path)[0] != os.path.splitext(invalid_path)[0]:
+                raise ValueError(f"Mismatched label/invalid files in {sequence_path}")
+        if len(label_paths) != len(invalid_paths):
+            raise ValueError(f"Missing invalid masks in {sequence_path}")
         out_dir = os.path.join(config.data_preprocess_root, "labels", sequence)
         os.makedirs(out_dir, exist_ok=True)
 
